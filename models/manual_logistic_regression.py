@@ -2,6 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
+
+LOGISTIC_REGRESSION_PARAM_GRID = {
+    "epochs": [1000, 3000, 5000, 10000],
+    "learning_rate": [0.0001, 0.001, 0.01, 0.05],
+}
+
+
 """
 ================================================================================
     Funcion: sigmoid
@@ -137,6 +144,82 @@ def accuracy(y_true, y_hat):
     return np.mean(true_classes == y_hat)
 """
 ================================================================================
+    Funcion: hyperparameter_search.
+    Prueba todas las combinaciones de epocas y tasa de aprendizaje definidas
+    en param_grid. Selecciona primero la mayor exactitud de validacion y usa el
+    menor BCE de validacion como criterio de desempate.
+
+    @param x_train -> matrix: variables independientes de entrenamiento.
+    @param y_train -> matrix: clases one hot de entrenamiento.
+    @param x_val -> matrix: variables independientes de validacion.
+    @param y_val -> matrix: clases one hot de validacion.
+    @param param_grid -> Dictionary: valores de hiperparametros a probar.
+    @return tuple: mejores parametros, mejores metricas y todos los resultados.
+================================================================================
+"""
+def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
+    search_results = []
+    best_params = None
+    best_validation_accuracy = -np.inf
+    best_validation_bce = np.inf
+
+    for epochs in param_grid["epochs"]:
+        for learning_rate in param_grid["learning_rate"]:
+            # Durante la busqueda no se guarda el historial para evitar
+            # calculos innecesarios. El conjunto test no participa aqui.
+            weights, biases, _ = train(
+                x_train,
+                y_train,
+                datasets={},
+                epochs=epochs,
+                alpha=learning_rate,
+            )
+            validation_predictions, validation_probabilities = predict(
+                x_val,
+                weights,
+                biases,
+            )
+            validation_accuracy = float(
+                accuracy(y_val, validation_predictions)
+            )
+            validation_bce = float(
+                np.mean(
+                    binary_cross_entropy(y_val, validation_probabilities)
+                )
+            )
+
+            result = {
+                "epochs": epochs,
+                "learning_rate": learning_rate,
+                "validation_accuracy": validation_accuracy,
+                "validation_bce": validation_bce,
+            }
+            search_results.append(result)
+
+            same_accuracy = np.isclose(
+                validation_accuracy,
+                best_validation_accuracy,
+            )
+            better_result = validation_accuracy > best_validation_accuracy
+            if same_accuracy:
+                better_result = validation_bce < best_validation_bce
+
+            if better_result:
+                best_params = {
+                    "epochs": epochs,
+                    "learning_rate": learning_rate,
+                }
+                best_validation_accuracy = validation_accuracy
+                best_validation_bce = validation_bce
+
+    return (
+        best_params,
+        best_validation_accuracy,
+        best_validation_bce,
+        search_results,
+    )
+"""
+================================================================================
     Funcion: confusion_matrix.
     Muestra la matriz de confusion con el resultado de las predicciones contra
     los valores reales.
@@ -178,11 +261,9 @@ def confusion_matrix(y_true, y_hat, class_names):
     en una matriz de confusion y grafica los errores del modelo.
 
     @param df -> dataFrame: datos transformados con one hot encoding.
-    @param epochs -> int: numero de veces que el modelo entrena.
-    @param learning_rate -> float: tasa de aprendizaje del modelo.
 ================================================================================
 """
-def logistic_regression_analysis(df, epochs=5000, learning_rate=0.001):
+def logistic_regression_analysis(df):
     class_names = ["I", "M", "F"]
     target_columns = ["Sex_I", "Sex_M", "Sex_F"]
     feature_columns = [
@@ -210,19 +291,56 @@ def logistic_regression_analysis(df, epochs=5000, learning_rate=0.001):
     x_val = (x_val - mean) / std
     x_test = (x_test - mean) / std
 
+    (
+        best_params,
+        best_validation_accuracy,
+        best_validation_bce,
+        search_results,
+    ) = hyperparameter_search(
+        x_train,
+        y_train,
+        x_val,
+        y_val,
+        LOGISTIC_REGRESSION_PARAM_GRID,
+    )
+
     datasets = {
         "Train": (x_train, y_train),
         "Validacion": (x_val, y_val),
         "Test": (x_test, y_test),
     }
+
     weights, biases, history = train(
-        x_train, y_train, datasets, epochs, learning_rate
+        x_train,
+        y_train,
+        datasets,
+        best_params["epochs"],
+        best_params["learning_rate"],
     )
 
     predictions_train, _ = predict(x_train, weights, biases)
     predictions_val, _ = predict(x_val, weights, biases)
     predictions_test, _ = predict(x_test, weights, biases)
     print("\nResumen de regresion logistica")
+    print("\nResultados de la busqueda de hiperparametros:")
+    print(
+        f"  {'Epocas':>6}  {'Learning rate':>13}  "
+        f"{'Accuracy val':>12}  {'BCE val':>10}"
+    )
+    for result in search_results:
+        print(
+            f"  {result['epochs']:>6}  "
+            f"{result['learning_rate']:>13.4g}  "
+            f"{result['validation_accuracy']:>12.4f}  "
+            f"{result['validation_bce']:>10.6f}"
+        )
+
+    print("\nMejores hiperparametros:")
+    print(f"  epochs: {best_params['epochs']}")
+    print(f"  learning_rate: {best_params['learning_rate']}")
+    print(f"  Accuracy de validacion: {best_validation_accuracy:.4f}")
+    print(f"  BCE de validacion: {best_validation_bce:.6f}")
+
     print("\nTamaños de los conjuntos:")
     print(f"  Entrenamiento: {len(x_train)}")
     print(f"  Validacion: {len(x_val)}")
