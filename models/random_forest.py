@@ -4,8 +4,16 @@ import pandas as pd
 import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
 from sklearn.preprocessing import LabelEncoder
+
+
+RANDOM_FOREST_PARAM_GRID = {
+    "n_estimators": [5, 8, 10, 15],
+    "max_depth": [2, 3, 5, 10, None],
+    "min_samples_leaf": [1, 2, 4],
+    "max_features": ["sqrt", "log2", None],
+}
 
 
 """
@@ -170,8 +178,24 @@ def random_forest_analysis(df):
     y_val_encoded = label_encoder.transform(y_val)
     y_test_encoded = label_encoder.transform(y_test)
 
-    model = RandomForestClassifier(random_state=42)
-    model.fit(x_train, y_train_encoded)
+
+    cross_validation = StratifiedKFold(
+        n_splits=5,
+        shuffle=True,
+        random_state=42,
+    )
+    grid_search = GridSearchCV(
+        estimator=RandomForestClassifier(random_state=42),
+        param_grid=RANDOM_FOREST_PARAM_GRID,
+        scoring="accuracy",
+        cv=cross_validation,
+        n_jobs=-1,
+        refit=True,
+    )
+    grid_search.fit(x_train, y_train_encoded)
+
+    model = grid_search.best_estimator_
+    best_params = grid_search.best_params_
 
     datasets = {
         "Entrenamiento": (x_train, y_train_encoded),
@@ -195,6 +219,14 @@ def random_forest_analysis(df):
 
     # Estadisticas de random forest
     print("\nResumen de Random Forest")
+
+    print("\nMejores hiperparametros (GridSearchCV):")
+    for parameter, value in best_params.items():
+        print(f"  {parameter}: {value}")
+    print(
+        "  Exactitud media de validacion cruzada: "
+        f"{grid_search.best_score_:.4f}"
+    )
 
     ## Tamaño de cada conjunto (train, val y test )
     print("\nTamanos de los conjuntos:")
