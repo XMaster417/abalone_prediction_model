@@ -9,10 +9,10 @@ from sklearn.preprocessing import LabelEncoder
 
 
 RANDOM_FOREST_PARAM_GRID = {
-    "n_estimators": [5, 8, 10, 15],
-    "max_depth": [2, 3, 5, 10, None],
-    "min_samples_leaf": [1, 2, 4],
-    "max_features": ["sqrt", "log2", None],
+    # "n_estimators": [5, 8, 10, 15],
+    # "max_depth": [2, 3, 5, 10, None],
+    # "min_samples_leaf": [1, 2, 4],
+    # "max_features": ["sqrt", "log2", None],
 }
 
 

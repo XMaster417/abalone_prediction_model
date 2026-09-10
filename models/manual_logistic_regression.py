@@ -1,11 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+import time
 
 
 LOGISTIC_REGRESSION_PARAM_GRID = {
     "epochs": [1000, 3000, 5000, 10000],
-    "learning_rate": [0.0001, 0.001, 0.01, 0.05],
+    "learning_rate": [0.01],
+    # "epocs": [3000],
+    # "learning_rate": [0.0001, 0.001, 0.01, 0.05, 0.1, 0.5],
 }
 
 
@@ -167,6 +170,7 @@ def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
         for learning_rate in param_grid["learning_rate"]:
             # Durante la busqueda no se guarda el historial para evitar
             # calculos innecesarios. El conjunto test no participa aqui.
+            training_start_time = time.perf_counter()
             weights, biases, _ = train(
                 x_train,
                 y_train,
@@ -174,6 +178,7 @@ def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
                 epochs=epochs,
                 alpha=learning_rate,
             )
+            training_time_seconds = time.perf_counter() - training_start_time
             validation_predictions, validation_probabilities = predict(
                 x_val,
                 weights,
@@ -193,6 +198,7 @@ def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
                 "learning_rate": learning_rate,
                 "validation_accuracy": validation_accuracy,
                 "validation_bce": validation_bce,
+                "training_time_seconds": training_time_seconds,
             }
             search_results.append(result)
 
@@ -458,14 +464,15 @@ def logistic_regression_analysis(df):
     print("\nResultados de la busqueda de hiperparametros:")
     print(
         f"  {'Epocas':>6}  {'Learning rate':>13}  "
-        f"{'Accuracy val':>12}  {'BCE val':>10}"
+        f"{'Accuracy val':>12}  {'BCE val':>10}  {'Tiempo (s)':>10}"
     )
     for result in search_results:
         print(
             f"  {result['epochs']:>6}  "
             f"{result['learning_rate']:>13.4g}  "
             f"{result['validation_accuracy']:>12.4f}  "
-            f"{result['validation_bce']:>10.6f}"
+            f"{result['validation_bce']:>10.6f}  "
+            f"{result['training_time_seconds']:>10.4f}"
         )
 
     print("\nMejores hiperparametros:")
