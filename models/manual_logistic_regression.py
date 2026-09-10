@@ -220,7 +220,7 @@ def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
     )
 """
 ================================================================================
-    Funcion: confusion_matrix.
+    Funcion: build_confusion_matrix.
     Muestra la matriz de confusion con el resultado de las predicciones contra
     los valores reales.
 
@@ -229,11 +229,144 @@ def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
     @param class_names -> list<String>: lista con los nombres de las clases
 ================================================================================
 """
-def confusion_matrix(y_true, y_hat, class_names):
-    # Indice de la clase verdadera.
+def build_confusion_matrix(y_true, y_hat, class_names):
     true_classes = np.argmax(y_true, axis=1)
     confusion = np.zeros((len(class_names), len(class_names)), dtype=int)
     np.add.at(confusion, (true_classes, y_hat), 1)
+    return confusion
+
+
+"""
+================================================================================
+    Funcion: classification_metrics.
+    Calcula precision, recall, F1, support y sus promedios para un problema
+    multiclase.
+
+    @param y_true -> matrix: matriz one-hot con las clases reales.
+    @param y_hat -> np.array: indices de las clases predichas.
+    @param class_names -> list<String>: nombres de las clases.
+    @return dictionary: metricas por clase y metricas agregadas.
+================================================================================
+"""
+def classification_metrics(y_true, y_hat, class_names):
+    confusion = build_confusion_matrix(y_true, y_hat, class_names)
+    true_positives = np.diag(confusion).astype(float)
+    support = confusion.sum(axis=1).astype(float)
+    predicted_support = confusion.sum(axis=0).astype(float)
+    false_positives = predicted_support - true_positives
+    false_negatives = support - true_positives
+
+    precision = np.divide(
+        true_positives,
+        true_positives + false_positives,
+        out=np.zeros(len(class_names)),
+        where=(true_positives + false_positives) != 0,
+    )
+    recall = np.divide(
+        true_positives,
+        true_positives + false_negatives,
+        out=np.zeros(len(class_names)),
+        where=(true_positives + false_negatives) != 0,
+    )
+    f1_score = np.divide(
+        2 * precision * recall,
+        precision + recall,
+        out=np.zeros(len(class_names)),
+        where=(precision + recall) != 0,
+    )
+    total_support = int(support.sum())
+    accuracy_value = (
+        float(true_positives.sum() / total_support)
+        if total_support != 0
+        else 0.0
+    )
+    weights = support / total_support if total_support != 0 else support
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1-score": f1_score,
+        "support": support.astype(int),
+        "accuracy": accuracy_value,
+        "macro avg": np.array(
+            [precision.mean(), recall.mean(), f1_score.mean()]
+        ),
+        "weighted avg": np.array(
+            [
+                np.sum(precision * weights),
+                np.sum(recall * weights),
+                np.sum(f1_score * weights),
+            ]
+        ),
+        "total_support": total_support,
+    }
+
+
+"""
+================================================================================
+    Funcion: print_classification_report.
+    Imprime en consola un reporte de clasificacion con el formato de precision,
+    recall, F1-score y support.
+================================================================================
+"""
+def print_classification_report(report, class_names, dataset_name):
+    print(f"\nReporte de clasificacion - {dataset_name}:")
+    print(f"{'':14} {'precision':>9} {'recall':>9} {'f1-score':>9} {'support':>9}")
+    print()
+
+    for index, class_name in enumerate(class_names):
+        print(
+            f"{class_name:>14} "
+            f"{report['precision'][index]:>9.2f} "
+            f"{report['recall'][index]:>9.2f} "
+            f"{report['f1-score'][index]:>9.2f} "
+            f"{report['support'][index]:>9}"
+        )
+
+    print()
+    print(
+        f"{'accuracy':>14} {'':>9} {'':>9} "
+        f"{report['accuracy']:>9.2f} {report['total_support']:>9}"
+    )
+    for average_name in ("macro avg", "weighted avg"):
+        average = report[average_name]
+        print(
+            f"{average_name:>14} "
+            f"{average[0]:>9.2f} {average[1]:>9.2f} {average[2]:>9.2f} "
+            f"{report['total_support']:>9}"
+        )
+
+
+"""
+================================================================================
+    Funcion: plot_classification_report.
+    Muestra precision, recall y F1-score por clase como mapa de calor.
+================================================================================
+"""
+def plot_classification_report(report, class_names, dataset_name):
+    class_metrics = np.column_stack(
+        (report["precision"], report["recall"], report["f1-score"])
+    )
+    plt.figure(figsize=(8, 4))
+    sns.heatmap(
+        class_metrics,
+        annot=True,
+        fmt=".2f",
+        cmap="YlGnBu",
+        xticklabels=["precision", "recall", "f1-score"],
+        yticklabels=class_names,
+        vmin=0,
+        vmax=1,
+    )
+    plt.title(f"Metricas de clasificacion - {dataset_name}")
+    plt.xlabel("Metricas")
+    plt.ylabel("Clase")
+    plt.tight_layout()
+    plt.show()
+
+
+def confusion_matrix(y_true, y_hat, class_names):
+    confusion = build_confusion_matrix(y_true, y_hat, class_names)
     plt.figure(figsize=(6, 5))
     sns.heatmap(
         confusion,
@@ -353,6 +486,23 @@ def logistic_regression_analysis(df):
     print(f"  Entrenamiento: {accuracy(y_train, predictions_train):.4f}")
     print(f"  Validacion: {accuracy(y_val, predictions_val):.4f}")
     print(f"  Test: {accuracy(y_test, predictions_test):.4f}")
+
+    validation_report = classification_metrics(
+        y_val,
+        predictions_val,
+        class_names,
+    )
+    print_classification_report(
+        validation_report,
+        class_names,
+        "Validacion",
+    )
+    plot_classification_report(
+        validation_report,
+        class_names,
+        "Validacion",
+    )
+
     confusion_matrix(y_test, predictions_test, class_names)
 
     plt.figure(figsize=(9, 5))

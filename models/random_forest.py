@@ -187,7 +187,7 @@ def random_forest_analysis(df):
     grid_search = GridSearchCV(
         estimator=RandomForestClassifier(random_state=42),
         param_grid=RANDOM_FOREST_PARAM_GRID,
-        scoring="accuracy",
+        scoring="f1_macro",
         cv=cross_validation,
         n_jobs=-1,
         refit=True,
@@ -244,11 +244,11 @@ def random_forest_analysis(df):
         print(f"  {name}: {value:.6f}")
 
     ## Reportar estadisticas como f-1, recall, precision
-    print("\nReporte de clasificacion - Validacion:")
+    print("\nReporte de clasificacion - Test:")
     print(
         classification_report(
-            y_val_encoded,
-            predictions["Validacion"],
+            y_test_encoded,
+            predictions["Test"],
             target_names=label_encoder.classes_,
             zero_division=0,
         )
@@ -256,13 +256,13 @@ def random_forest_analysis(df):
 
     # Graficar metricas
     plot_classification_report(
-        y_val_encoded,
-        predictions["Validacion"],
+        y_test_encoded,
+        predictions["Test"],
         label_encoder.classes_,
     )
     plot_confusion_matrix(
-        y_val_encoded,
-        predictions["Validacion"],
+        y_test_encoded,
+        predictions["Test"],
         label_encoder.classes_,
     )
     plot_bce(bce_results)
