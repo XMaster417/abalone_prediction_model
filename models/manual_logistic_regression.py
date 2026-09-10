@@ -148,8 +148,8 @@ def accuracy(y_true, y_hat):
 """
 ================================================================================
     Funcion: hyperparameter_search.
-    Prueba todas las combinaciones de epocas y tasa de aprendizaje definidas
-    en param_grid. Selecciona primero la mayor exactitud de validacion y usa el
+    Prueba los hiperparametros de epocas y tasa de aprendizaje definidas
+    en param_grid. Selecciona primero el mayor macro F1 de validacion y usa el
     menor BCE de validacion como criterio de desempate.
 
     @param x_train -> matrix: variables independientes de entrenamiento.
@@ -157,13 +157,14 @@ def accuracy(y_true, y_hat):
     @param x_val -> matrix: variables independientes de validacion.
     @param y_val -> matrix: clases one hot de validacion.
     @param param_grid -> Dictionary: valores de hiperparametros a probar.
-    @return tuple: mejores parametros, mejores metricas y todos los resultados.
+    @return tuple: mejores parametros, mejor macro F1 de validacion, mejor BCE
+        de validacion y todos los resultados.
 ================================================================================
 """
 def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
     search_results = []
     best_params = None
-    best_validation_accuracy = -np.inf
+    best_validation_macro_f1 = -np.inf
     best_validation_bce = np.inf
 
     for epochs in param_grid["epochs"]:
@@ -184,8 +185,13 @@ def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
                 weights,
                 biases,
             )
-            validation_accuracy = float(
-                accuracy(y_val, validation_predictions)
+            validation_report = classification_metrics(
+                y_val,
+                validation_predictions,
+                class_names=["I", "M", "F"],
+            )
+            validation_macro_f1 = float(
+                validation_report["macro avg"][2]
             )
             validation_bce = float(
                 np.mean(
@@ -196,18 +202,18 @@ def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
             result = {
                 "epochs": epochs,
                 "learning_rate": learning_rate,
-                "validation_accuracy": validation_accuracy,
+                "validation_macro_f1": validation_macro_f1,
                 "validation_bce": validation_bce,
                 "training_time_seconds": training_time_seconds,
             }
             search_results.append(result)
 
-            same_accuracy = np.isclose(
-                validation_accuracy,
-                best_validation_accuracy,
+            same_macro_f1 = np.isclose(
+                validation_macro_f1,
+                best_validation_macro_f1,
             )
-            better_result = validation_accuracy > best_validation_accuracy
-            if same_accuracy:
+            better_result = validation_macro_f1 > best_validation_macro_f1
+            if same_macro_f1:
                 better_result = validation_bce < best_validation_bce
 
             if better_result:
@@ -215,12 +221,12 @@ def hyperparameter_search(x_train, y_train, x_val, y_val, param_grid):
                     "epochs": epochs,
                     "learning_rate": learning_rate,
                 }
-                best_validation_accuracy = validation_accuracy
+                best_validation_macro_f1 = validation_macro_f1
                 best_validation_bce = validation_bce
 
     return (
         best_params,
-        best_validation_accuracy,
+        best_validation_macro_f1,
         best_validation_bce,
         search_results,
     )
@@ -432,7 +438,7 @@ def logistic_regression_analysis(df):
 
     (
         best_params,
-        best_validation_accuracy,
+        best_validation_macro_f1,
         best_validation_bce,
         search_results,
     ) = hyperparameter_search(
@@ -464,13 +470,13 @@ def logistic_regression_analysis(df):
     print("\nResultados de la busqueda de hiperparametros:")
     print(
         f"  {'Epocas':>6}  {'Learning rate':>13}  "
-        f"{'Accuracy val':>12}  {'BCE val':>10}  {'Tiempo (s)':>10}"
+        f"{'Macro F1 val':>12}  {'BCE val':>10}  {'Tiempo (s)':>10}"
     )
     for result in search_results:
         print(
             f"  {result['epochs']:>6}  "
             f"{result['learning_rate']:>13.4g}  "
-            f"{result['validation_accuracy']:>12.4f}  "
+            f"{result['validation_macro_f1']:>12.4f}  "
             f"{result['validation_bce']:>10.6f}  "
             f"{result['training_time_seconds']:>10.4f}"
         )
@@ -478,7 +484,7 @@ def logistic_regression_analysis(df):
     print("\nMejores hiperparametros:")
     print(f"  epochs: {best_params['epochs']}")
     print(f"  learning_rate: {best_params['learning_rate']}")
-    print(f"  Accuracy de validacion: {best_validation_accuracy:.4f}")
+    print(f"  Macro F1 de validacion: {best_validation_macro_f1:.4f}")
     print(f"  BCE de validacion: {best_validation_bce:.6f}")
 
     print("\nTamaños de los conjuntos:")
