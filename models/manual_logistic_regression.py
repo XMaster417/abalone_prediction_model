@@ -495,12 +495,12 @@ def logistic_regression_analysis(df):
     print_classification_report(
         validation_report,
         class_names,
-        "Validacion",
+        "Test",
     )
     plot_classification_report(
         validation_report,
         class_names,
-        "Validacion",
+        "Test",
     )
 
     confusion_matrix(y_test, predictions_test, class_names)
