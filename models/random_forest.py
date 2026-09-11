@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import time
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
@@ -9,10 +10,10 @@ from sklearn.preprocessing import LabelEncoder
 
 
 RANDOM_FOREST_PARAM_GRID = {
-    "n_estimators": [5, 8, 10, 15],
-    "max_depth": [2, 3, 5, 10, None],
-    "min_samples_leaf": [1, 2, 4],
-    "max_features": ["sqrt", "log2", None],
+    "n_estimators": [5, 10],
+    "max_depth": [10],
+    "min_samples_leaf": [10],
+    "max_features": ["sqrt"],
 }
 
 
@@ -39,6 +40,24 @@ def binary_cross_entropy(y_true, y_probability, number_classes):
         + (1.0 - y_one_hot) * np.log(1.0 - y_probability)
     )
     return float(np.mean(losses))
+
+
+"""
+================================================================================
+    Funcion: negative_binary_cross_entropy_scorer
+    Calcula el BCE negativo de una particion de validacion cruzada. Se devuelve
+    negativo porque GridSearchCV siempre busca maximizar las metricas.
+
+    @param estimator -> RandomForestClassifier: modelo ajustado a evaluar.
+    @param x -> pd.dataframe: variables independientes de la particion.
+    @param y -> np.array: clases reales codificadas de la particion.
+    @return num: BCE negativo de las probabilidades predichas.
+================================================================================
+"""
+def negative_binary_cross_entropy_scorer(estimator, x, y):
+    probabilities = estimator.predict_proba(x)
+    bce = binary_cross_entropy(y, probabilities, len(estimator.classes_))
+    return -bce
 """
 ================================================================================
     Función: plot_classification_report
@@ -72,7 +91,7 @@ def plot_classification_report(y_true, y_pred, class_names):
         vmin=0,
         vmax=1,
     )
-    plt.title("Reporte de clasificacion - Validacion")
+    plt.title("Reporte de clasificacion - Test")
     plt.xlabel("Metrica")
     plt.ylabel("Clase")
     plt.tight_layout()
@@ -100,7 +119,7 @@ def plot_confusion_matrix(y_true, y_pred, class_names):
         xticklabels=class_names,
         yticklabels=class_names,
     )
-    plt.title("Matriz de confusion - Validacion")
+    plt.title("Matriz de confusion - Test")
     plt.xlabel("Prediccion")
     plt.ylabel("Clase real")
     plt.tight_layout()
@@ -141,6 +160,11 @@ def plot_bce(bce_results):
     modelo y predicen valores con los diferentes conjutos. 
 
     Finalmente se imprimen metricas para verificar el rendimiento del modelo.
+
+    Para cada combinacion de hiperparametros, se usa validacion cruzada
+    estratificada y se reportan macro F1, BCE y tiempo promedio de ajuste. La
+    mejor combinacion se selecciona por mayor macro F1 y menor BCE en caso de
+    empate.
 
     @param df -> pd.dataFrame: dataframe con el dataset
 ================================================================================
@@ -184,18 +208,65 @@ def random_forest_analysis(df):
         shuffle=True,
         random_state=42,
     )
+    scoring = {
+        "macro_f1": "f1_macro",
+        "bce": negative_binary_cross_entropy_scorer,
+    }
     grid_search = GridSearchCV(
         estimator=RandomForestClassifier(random_state=42),
         param_grid=RANDOM_FOREST_PARAM_GRID,
-        scoring="accuracy",
+        scoring=scoring,
         cv=cross_validation,
         n_jobs=-1,
-        refit=True,
+        refit=False,
     )
     grid_search.fit(x_train, y_train_encoded)
 
-    model = grid_search.best_estimator_
-    best_params = grid_search.best_params_
+    search_results = []
+    for index, parameters in enumerate(grid_search.cv_results_["params"]):
+        search_results.append(
+            {
+                "parameters": parameters,
+                "validation_macro_f1": grid_search.cv_results_[
+                    "mean_test_macro_f1"
+                ][index],
+                "validation_bce": -grid_search.cv_results_[
+                    "mean_test_bce"
+                ][index],
+                "mean_fit_time_seconds": grid_search.cv_results_[
+                    "mean_fit_time"
+                ][index],
+            }
+        )
+
+    best_result = None
+    for result in search_results:
+        if best_result is None:
+            best_result = result
+            continue
+
+        same_macro_f1 = np.isclose(
+            result["validation_macro_f1"],
+            best_result["validation_macro_f1"],
+        )
+        better_result = (
+            result["validation_macro_f1"]
+            > best_result["validation_macro_f1"]
+        )
+        if same_macro_f1:
+            better_result = (
+                result["validation_bce"]
+                < best_result["validation_bce"]
+            )
+
+        if better_result:
+            best_result = result
+
+    best_params = best_result["parameters"]
+    refit_start_time = time.perf_counter()
+    model = RandomForestClassifier(random_state=42, **best_params)
+    model.fit(x_train, y_train_encoded)
+    refit_time_seconds = time.perf_counter() - refit_start_time
 
     datasets = {
         "Entrenamiento": (x_train, y_train_encoded),
@@ -220,12 +291,33 @@ def random_forest_analysis(df):
     # Estadisticas de random forest
     print("\nResumen de Random Forest")
 
+    print("\nResultados de la busqueda de hiperparametros:\n")
+    print(
+        f"  {'Hiperparametros':<75}  {'Macro F1 CV':>11}  "
+        f"{'BCE CV':>10}  {'Tiempo medio (s)':>17}"
+    )
+    for result in search_results:
+        parameters_text = ", ".join(
+            f"{parameter}={value}"
+            for parameter, value in result["parameters"].items()
+        )
+        print(
+            f"  {parameters_text:<75}  "
+            f"{result['validation_macro_f1']:>11.4f}  "
+            f"{result['validation_bce']:>10.6f}  "
+            f"{result['mean_fit_time_seconds']:>17.4f}"
+        )
+
     print("\nMejores hiperparametros (GridSearchCV):")
     for parameter, value in best_params.items():
         print(f"  {parameter}: {value}")
     print(
-        "  Exactitud media de validacion cruzada: "
-        f"{grid_search.best_score_:.4f}"
+        "  Macro F1 medio de validacion cruzada: "
+        f"{best_result['validation_macro_f1']:.4f}"
+    )
+    print(
+        "  Tiempo de reconstruccion final (s): "
+        f"{refit_time_seconds:.4f}"
     )
 
     ## Tamaño de cada conjunto (train, val y test )
@@ -244,11 +336,11 @@ def random_forest_analysis(df):
         print(f"  {name}: {value:.6f}")
 
     ## Reportar estadisticas como f-1, recall, precision
-    print("\nReporte de clasificacion - Validacion:")
+    print("\nReporte de clasificacion - Test:")
     print(
         classification_report(
-            y_val_encoded,
-            predictions["Validacion"],
+            y_test_encoded,
+            predictions["Test"],
             target_names=label_encoder.classes_,
             zero_division=0,
         )
@@ -256,13 +348,13 @@ def random_forest_analysis(df):
 
     # Graficar metricas
     plot_classification_report(
-        y_val_encoded,
-        predictions["Validacion"],
+        y_test_encoded,
+        predictions["Test"],
         label_encoder.classes_,
     )
     plot_confusion_matrix(
-        y_val_encoded,
-        predictions["Validacion"],
+        y_test_encoded,
+        predictions["Test"],
         label_encoder.classes_,
     )
     plot_bce(bce_results)
