@@ -5,10 +5,8 @@ import time
 
 
 LOGISTIC_REGRESSION_PARAM_GRID = {
-    "epochs": [1000, 3000, 5000, 10000],
-    "learning_rate": [0.01],
-    # "epocs": [3000],
-    # "learning_rate": [0.0001, 0.001, 0.01, 0.05, 0.1, 0.5],
+    "epochs": [7000],
+    "learning_rate": [0.05],
 }
 
 
